@@ -222,10 +222,13 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
             (child_rows, _max_concurrency)  = flatten_defaultdict(v, parent_keys + [k], show_blank)
             if (_max_concurrency > max_concurrency):
                 max_concurrency = _max_concurrency
-        elif (k == P_NUMUSERS or k == P_CONCURUSERS): 
+        elif (k == P_CONCURUSERS): 
             d[P_CONCURUSERS] = max_concurrency
             if ("_total" in keys):
                 rows[0][-1] = max_concurrency
+            continue
+        elif (k == P_NUMUSERS):
+            if ("_total" in keys):
                 rows[0][-2] = d[P_NUMUSERS]
             continue
         else:	# value is added at the end of the child_rows, which becomes first row of rows
@@ -297,7 +300,6 @@ def build_pivot_table(df, nested_data, per_team=True):
             vend_node = org_node[vendor]
             prod_node = vend_node[product]
             prod_node[P_CONCURUSERS] = 0
-            prod_node[P_NUMUSERS] = 0
             feature_node = prod_node[feature]
         else:
             # project, vendor, product, feature, org
@@ -305,7 +307,6 @@ def build_pivot_table(df, nested_data, per_team=True):
             vend_node = proj_node[vendor]
             prod_node = vend_node[product]
             prod_node[P_CONCURUSERS] = 0
-            prod_node[P_NUMUSERS] = 0
             feature_node = prod_node[feature]
             org_node = feature_node[org]
 
@@ -319,11 +320,11 @@ def build_pivot_table(df, nested_data, per_team=True):
 
         # Store username per product
         if (t_prod.get(username, 0) == 0 and time > 0):
-            prod_node[P_NUMUSERS] = prod_node[P_NUMUSERS] + 1
+            # prod_node[P_NUMUSERS] = prod_node[P_NUMUSERS] + 1
             t_prod[username] = t_prod.get(username, 0) + time	# not used, but set for value for the key "username"
 
-        if (prod_node.get(username, 0) == 0 and time > 0):
-            prod_node[P_NUMUSERS]= prod_node.get(P_NUMUSERS, 0) + 1
+#        if (prod_node.get(username, 0) == 0 and time > 0):
+#            prod_node[P_NUMUSERS]= prod_node.get(P_NUMUSERS, 0) + 1
     
         if (per_team):  
             # Update accumulated totals at each level
