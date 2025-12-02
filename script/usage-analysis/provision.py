@@ -4,6 +4,7 @@ import math
 
 # pivot table column, which comes from match.py
 P_CONCURUSERS = "Concurrent Users"
+P_TOTAL = "_total"
 
 # ---------- CONFIG ----------
 SHEET = "Current Provisioning"
@@ -18,6 +19,8 @@ PROV_CONCURRENT_USERS = P_CONCURUSERS
 PROV_OVER = "Over Provision"
 PROV_UNDER = "Under Provision"
 PROV_EVEN = "Adequate Provision"
+PROV_TOTAL = "Usage time (hours)"	# from P_TOTAL
+
 # How many top rows may contain selection controls (not data headers)
 MAX_SELECTION_ROWS = 9
 # How far to search for header row (some tolerance)
@@ -113,6 +116,7 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
         df_provision.loc[:,PROV_OVER] = 0	# red
         df_provision.loc[:,PROV_UNDER] = 0	# red
         df_provision.loc[:,PROV_EVEN] = "No"    # blue
+        df_provision.loc[:,PROV_TOTAL] = 0
  
     # This callback is executed for each leaf of pivot_data
     def handle_leaf(path, value):
@@ -123,7 +127,7 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
         proj, perf, vend, prod, field = path
 
         # Only process the P_CONCURUSERS leaves
-        if field != P_CONCURUSERS:
+        if field != P_CONCURUSERS and field != P_TOTAL:
             return
 
         # Build filter
@@ -134,9 +138,12 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
             (df_provision[PROV_PRODUCT] == prod)
         )
 
+        column_name = PROV_CONCURRENT_USERS
+        if (field == P_TOTAL):
+            column_name = PROV_TOTAL
         if match.any():
             # Update existing row
-            df_provision.loc[match, PROV_CONCURRENT_USERS] = value
+            df_provision.loc[match, column_name] = value
         else:
             # Append a new row
             #df_provision.loc[match, "concurrency"] = value
@@ -146,7 +153,7 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
                 PROV_VENDOR: vend,
                 PROV_PRODUCT: prod,
                 PROV_CURRENT_PROV: 0,
-                PROV_CONCURRENT_USERS : value,
+                column_name: value,
             }
             df_provision.loc[len(df_provision)] = new_row
 
@@ -188,7 +195,7 @@ def build_current_provision_usage(file_prov, pivot_data):
         raise RuntimeError(f"Failed to detect header row within first {MAX_HEADER_SEARCH_ROWS} rows. "
                            "Check the sheet and column names.")
     
-    print(f"Detected header row (1-based): {header_idx + 1}")
+    #print(f"Detected header row (1-based): {header_idx + 1}")
     
     # --- Step 2: read again using detected header row ---
     df_provision = pd.read_excel(file_prov, sheet_name=SHEET, header=header_idx, dtype=object)

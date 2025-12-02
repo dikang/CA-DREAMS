@@ -5,6 +5,7 @@ import json
 from openpyxl import load_workbook
 from collections import defaultdict
 import provision as pr
+import math
 
 # -- pivot table keys
 # 1. fields from usage Excel file
@@ -22,6 +23,7 @@ PROJECT = "Project Name"
 P_NUMUSERS = "Number of Users"
 P_CONCURUSERS = "Concurrent Users"
 P_INSTANCES = "_instances"
+P_TOTAL = "_total"
 
 # total number of columns output of pivot table in Excel file
 NUMCOLUMNS = 9	
@@ -32,8 +34,8 @@ NUMCOLUMNS = 9
 F_PRODUCT="Product"
 F_FEATURE="Feature"
 
-# Sheet name for Stat
-SHEET_NAME_STAT = "Stat"
+# Sheet name for Comparison between provisioned and used 
+SHEET_NAME_STAT = "Actual Usage"
 
 def setup_feature_dictionary(file_b):
     mapping = []
@@ -61,8 +63,8 @@ def setup_feature_dictionary(file_b):
                         "product" : row[F_PRODUCT],
                         "feature" : row[F_FEATURE]
                     })
-        else:
-            print(f"⚠️ Warning: 'Product'/'Feature' columns not found in sheet '{sheet}'")
+#        else:
+#            print(f"⚠️ Warning: 'Product'/'Feature' columns not found in sheet '{sheet}'")
     # Build lookup dictionary
     lookup = {
         row["feature"]: (row["vendor"], row["product"])
@@ -207,7 +209,6 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
     if parent_keys is None:
         parent_keys = []
     rows = []
-
     keys = sorted(d.keys(), key=sort_key)
 
     max_concurrency = 0
@@ -256,6 +257,7 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
 
 def write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov):
     processed_filename = os.path.splitext(file_a)[0] + "-processed.xlsx"
+    print("[5] Write all to file: %s" % processed_filename)
     with pd.ExcelWriter(processed_filename, engine="xlsxwriter") as writer:
         for sheet in xls_a.sheet_names:
             if sheet == target_sheet:
@@ -285,14 +287,20 @@ def build_pivot_table(df, nested_data, per_team=True):
     for _, row in df.iterrows():
         project = row[PROJECT]
         org = row[ORG]
+
+        if isinstance(project, float) and math.isnan(project):
+            # no such user exists in AdminUser list.
+            print("No such user exists: Exit")
+            sys.exit(1)
+
         vendor = row[VENDOR]
         product = row[PRODUCT]
         feature = row[USG_FEATURE]
         username = row[USG_USERNAME]
         time = float(row[USG_TIME])
-        start_t = row["Start Time"]
-        end_t = row["End Time"]
-  
+        start_t = str(row["Start Time"])
+        end_t = str(row["End Time"])
+
         if (per_team):  
             # project, org, vendor, product, feature
             proj_node = nested_data[project]
@@ -350,7 +358,6 @@ def build_pivot_table(df, nested_data, per_team=True):
             feature_node[P_INSTANCES].append([start_t, end_t])
   
     # remove prod_node[username]    
-    result = json.loads(json.dumps(nested_data))
 
     # Print nicely formatted result
 
@@ -383,15 +390,18 @@ def main():
     file_d = sys.argv[4]
 
     # --- Step 1: Build mapping dictionary from EDA feature.xlsx ---
+    print("[1] Build mapping dictionary from EDA feature file: %s" % file_b)
     feature_lookup = setup_feature_dictionary(file_b)
     
     # --- Step 2: Build mapping dictionary from User list.xlsx ---
+    print("[2] Build mapping dictionary from User list file: %s" % file_c)
     user_lookup = setup_user_dictionary(file_c)
 
-    # --- Step 3: Read A.xlsx and add extra fields ---
+    # --- Step 2.1: Read A.xlsx and add extra fields ---
     (xls_a, target_sheet, df) = add_extra_fields(file_a, feature_lookup, user_lookup)
 
-    # -- Step 4: Collect data for a pivot table
+    print("[3] Make Pivot table from usage file: %s" % file_a)
+    # -- Step 3: Collect data for a pivot table
     pivot_data = tree()
     build_pivot_table(df, pivot_data)
     (rows, max_concurrency) = flatten_defaultdict(pivot_data)
@@ -399,7 +409,7 @@ def main():
     df_pivot_data = pd.DataFrame(rows) 
     df_pivot_data.columns = ["Project", "Performer", "Vendor", "Product", "Product Feature", "User", "Total Usage Time", "Number of Users", "Concurrency (Estimated)"]
 
-    # -- Step 4b: Collect data for a pivot table
+    # -- Step 3.1: Collect data for a pivot table
     pivot_data_tool = tree()
     build_pivot_table(df, pivot_data_tool, False)
     (rows_tool, max_concurrency) = flatten_defaultdict(pivot_data_tool)
@@ -407,10 +417,11 @@ def main():
     df_pivot_data_tool = pd.DataFrame(rows_tool) 
     df_pivot_data_tool.columns = ["Project", "Vendor", "Product", "Product Feature", "Performer", "User", "Total Usage Time", "Number of Users", "Concurrency (Estimated)"]
 
-    # -- Step 5: read current_provisiong Exel file and create usage table
+    # -- Step 4: read current_provisiong Exel file and create usage table
+    print("[4] Build table comparing current provisions (from file: %s) and actual usage" % file_d)
     (df_prov) = pr.build_current_provision_usage(file_d, pivot_data)
 
-    # --- Step 4: Write all sheets into A-processed.xlsx ---
+    # --- Step 5: Write all sheets into A-processed.xlsx ---
     write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov)
 
 if __name__ == "__main__":
