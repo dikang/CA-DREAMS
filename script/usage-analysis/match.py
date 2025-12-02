@@ -260,8 +260,8 @@ def write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data
     print("[5] Write all to file: %s" % processed_filename)
     with pd.ExcelWriter(processed_filename, engine="xlsxwriter") as writer:
         for sheet in xls_a.sheet_names:
-            if sheet == target_sheet:
-                df.to_excel(writer, sheet_name=sheet, index=False)
+            if sheet == target_sheet:	# usage sheet
+                df.to_excel(writer, sheet_name="Usage", index=False)
             else:
                 # Detect if header in row 2 for other sheets as well
                 guessed_header_row = detect_header_row(file_a, sheet)
