@@ -35,7 +35,7 @@ F_PRODUCT="Product"
 F_FEATURE="Feature"
 
 # Sheet name for Comparison between provisioned and used 
-SHEET_NAME_STAT = "Actual Usage"
+SHEET_NAME_STAT = "Tool Usage"
 
 def setup_feature_dictionary(file_b):
     mapping = []
