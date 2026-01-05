@@ -96,20 +96,30 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
     - Appends new rows if not found
     """
 
-    # sort df_provision first
     df_provision = df_provision.copy()
-    df_provision.sort_values(by=df_provision.columns[:4].tolist(), inplace=True)
 
     # translating perfomer name to standardized one
     # these are used in the provisioned data
     trans_performer = {
         "USC-ISI, The MOSIS Services": "MOSIS 2.0",
-        "UCR, The MOSIS Services": "UCR"
+        "UCR, The MOSIS Services": "UCR",
+        "University of California, San Diego" : "UCSD",
+        "University of California, Santa Barbara": "UCSB",
+        "University of California, San Diego": "UCSD",
+        "USC - Beerel": "USC-Beerel",
+        "USC - Lim": "USC-Lim",
+        "USC - Kapadia": "USC-Kapadia",
+        "USC - Chen - Wu - Yang": "USC-Chen-Wu-Yang",
+        "USC - Hossein": "USC-Hossein",
+        "UCLA - Wang": "UCLA-Wang"
     }
 
     for i, row in df_provision.iterrows():
         if (row[PROV_PERFORMER] in trans_performer):
             row[PROV_PERFORMER] = trans_performer[row[PROV_PERFORMER]]
+
+    # sort df_provision first
+    df_provision.sort_values(by=df_provision.columns[:4].tolist(), inplace=True)
 
     if PROV_CONCURRENT_USERS not in df_provision.columns:
         df_provision.loc[:,PROV_CONCURRENT_USERS] = 0
@@ -168,6 +178,7 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
             df_provision.loc[i, PROV_UNDER] = ""
             continue 
         diff = row[PROV_CURRENT_PROV] - row[PROV_CONCURRENT_USERS]
+            
         if diff == 0: # adequate
             df_provision.loc[i, PROV_EVEN] = "Yes"
             df_provision.loc[i, PROV_OVER] = ""
@@ -180,7 +191,14 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
             df_provision.loc[i, PROV_EVEN] = ""
             df_provision.loc[i, PROV_OVER] = ""
             df_provision.loc[i, PROV_UNDER] = diff
- 
+
+    # remove rows whose current_provision == 0 and concurrent_users == 0
+    mask = df_provision.apply(
+        lambda row: row[PROV_CURRENT_PROV] == 0 and row[PROV_EVEN] == "Yes",
+        axis=1
+    )
+    df_provision = df_provision[~mask] 
+
     return df_provision
 
 def build_current_provision_usage(file_prov, pivot_data):

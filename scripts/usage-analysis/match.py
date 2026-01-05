@@ -37,6 +37,10 @@ F_FEATURE="Feature"
 # Sheet name for Comparison between provisioned and used 
 SHEET_NAME_STAT = "Tool Usage"
 
+def normalize(s: str) -> str:
+    # remove all spaces, then make lowercase
+    return s.replace(" ", "").lower()
+
 def setup_feature_dictionary(file_b):
     mapping = []
     xls_b = pd.ExcelFile(file_b)
