@@ -40,6 +40,7 @@ SHEET_NAME_STAT = "Tool Usage"
 from datetime import datetime
 
 CUSTOM_FMT = "%d/%m/%Y %H:%M:%S"
+CUSTOM_FMT2 = "%d/%m/%Y %H:%M"
 NIMBIS_ISO_FMT = "%Y-%d-%m %H:%M:%S"
 
 def parse_datetime(s: str) -> datetime:
@@ -56,7 +57,13 @@ def parse_datetime(s: str) -> datetime:
     except ValueError:
         pass
 
-    # 3. Neither matched
+    # 3. Try custom format
+    try:
+        return datetime.strptime(s, CUSTOM_FMT2)
+    except ValueError:
+        pass
+
+    # 4. Neither matched
     raise ValueError(f"Unsupported date format: {s}")
 
 def normalize(s: str) -> str:
@@ -212,8 +219,6 @@ def calculate_concurrency(A):
     increased = 0
     diff_list=[]
 
-    #fmt = "%m/%d/%Y %H:%M"
-
     # Sweep line: accumulate current usage
     for _, change in events:
         current += change
@@ -244,6 +249,8 @@ def calculate_concurrency(A):
     if (max_concurrency < 1): 
         max_concurrency = 1
 
+    if (sorted_result == {}):
+        return (1, 0.0)
     max_concurrency_key, concur_value = next(iter(sorted_result.items()))
 
     if (max_concurrency != max_concurrency_key):
