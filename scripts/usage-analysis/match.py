@@ -6,7 +6,6 @@ from openpyxl import load_workbook
 from collections import defaultdict
 import provision as pr
 import math
-
 # -- pivot table keys
 # 1. fields from usage Excel file
 USG_USERNAME = "User Name"
@@ -22,11 +21,12 @@ PROJECT = "Project Name"
 # 3. calculated columns
 P_NUMUSERS = "Number of Users"
 P_CONCURUSERS = "Concurrent Users"
+P_CONCURDURATION= "Concurrent Duration"
 P_INSTANCES = "_instances"
 P_TOTAL = "_total"
 
 # total number of columns output of pivot table in Excel file
-NUMCOLUMNS = 9	
+NUMCOLUMNS = 10
 
 # -- end of pivot table keys
 
@@ -36,6 +36,28 @@ F_FEATURE="Feature"
 
 # Sheet name for Comparison between provisioned and used 
 SHEET_NAME_STAT = "Tool Usage"
+
+from datetime import datetime
+
+CUSTOM_FMT = "%d/%m/%Y %H:%M:%S"
+NIMBIS_ISO_FMT = "%Y-%d-%m %H:%M:%S"
+
+def parse_datetime(s: str) -> datetime:
+    # 1. Try ISO format first
+    try:
+#        return datetime.fromisoformat(s)
+        return datetime.strptime(s, NIMBIS_ISO_FMT)
+    except ValueError:
+        pass
+
+    # 2. Try custom format
+    try:
+        return datetime.strptime(s, CUSTOM_FMT)
+    except ValueError:
+        pass
+
+    # 3. Neither matched
+    raise ValueError(f"Unsupported date format: {s}")
 
 def normalize(s: str) -> str:
     # remove all spaces, then make lowercase
@@ -175,8 +197,8 @@ def calculate_concurrency(A):
     for start_time, end_time in A:
         if (start_time == end_time): 
             continue;
-        events.append((start_time, 1))     # start event
-        events.append((end_time, -1))      # end event
+        events.append((parse_datetime(start_time), 1))     # start event
+        events.append((parse_datetime(end_time), -1))      # end event
 
     # Sort events: if same time, process end (-1) before start (+1)
     events.sort(key=lambda x: (x[0], x[1]))
@@ -184,13 +206,49 @@ def calculate_concurrency(A):
     max_concurrency = 0
     current = 0
 
+    old_max_concurrency = 0
+    _c_start_time = None
+    _c_end_time = None
+    increased = 0
+    diff_list=[]
+
+    #fmt = "%m/%d/%Y %H:%M"
+
     # Sweep line: accumulate current usage
     for _, change in events:
         current += change
         max_concurrency = max(max_concurrency, current)
+        if (change > 0): # increase in concurrency
+            if (max_concurrency >= old_max_concurrency):
+                old_max_concurrency = max_concurrency
+                _c_start_time = _
+                increased = 1
+        elif (change < 0): # decrease in concurrency
+        
+            _c_end_time = _
+            if (increased == 1):
+                _c_diff = (_c_end_time - _c_start_time).total_seconds()
+                if (_c_diff < 0): sys.exit(1)
+                new_duration = [current+1, _c_diff/3600.0]
+                diff_list.append([current+1, _c_diff/3600.0])
+            increased = 0
 
-    if (max_concurrency < 1): max_concurrency = 1
-    return max_concurrency
+    # Sum duration per concurrency
+    result = defaultdict(float)
+    for concurrency, hours in diff_list:
+        result[concurrency] += hours
+
+    # Sort by concurrency (descending)
+    sorted_result = dict(sorted(result.items(), reverse=True))
+
+    if (max_concurrency < 1): 
+        max_concurrency = 1
+
+    max_concurrency_key, concur_value = next(iter(sorted_result.items()))
+
+    if (max_concurrency != max_concurrency_key):
+       sys.exit(1)
+    return (max_concurrency, concur_value)
 
 # Sort keys: put "_total" first, put NUMUSERS and P_CONCURUSERS last
 def sort_key(k):
@@ -216,25 +274,31 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
     keys = sorted(d.keys(), key=sort_key)
 
     max_concurrency = 0
+    duration = 0.0
     for i, k in enumerate(keys):
         if k == P_INSTANCES:	# list of [start_time, end_time]
-            _max_concurrency = calculate_concurrency(d[k])
+            (_max_concurrency, _duration) = calculate_concurrency(d[k])
             if (_max_concurrency > max_concurrency):
                 max_concurrency = _max_concurrency
+                duration = _duration
             continue
         v = d[k]
         if isinstance(v, dict):
-            (child_rows, _max_concurrency)  = flatten_defaultdict(v, parent_keys + [k], show_blank)
+            (child_rows, _max_concurrency, _duration)  = flatten_defaultdict(v, parent_keys + [k], show_blank)
             if (_max_concurrency > max_concurrency):
                 max_concurrency = _max_concurrency
+                duration = _duration
         elif (k == P_CONCURUSERS): 
             d[P_CONCURUSERS] = max_concurrency
+            d[P_CONCURDURATION] = duration 
             if ("_total" in keys):
-                rows[0][-1] = max_concurrency
+                rows[0][-1] = duration
+                rows[0][-2] = max_concurrency
             continue
+        elif (k == P_CONCURDURATION): continue
         elif (k == P_NUMUSERS):
             if ("_total" in keys):
-                rows[0][-2] = d[P_NUMUSERS]
+                rows[0][-3] = d[P_NUMUSERS]
             continue
         else:	# value is added at the end of the child_rows, which becomes first row of rows
             if (k == "_total"):
@@ -242,10 +306,11 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
             else:
                 t = [k, v]
             # insert "" to make the columns aligned
-            diff = NUMCOLUMNS - 2 - len(parent_keys) - len(t)
+            diff = NUMCOLUMNS - 1 - 2 - len(parent_keys) - len(t)
             child_row = list(parent_keys)
             child_row.extend([""]*diff)
             child_rows = [child_row + t]
+            child_rows[0].append("")
             child_rows[0].append("")
             child_rows[0].append("")
         # If we’re not at the topmost level, blank out repeated parent keys
@@ -257,7 +322,7 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
 
         rows.extend(child_rows)
 
-    return (rows, max_concurrency)
+    return (rows, max_concurrency, duration)
 
 def write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov):
     processed_filename = os.path.splitext(file_a)[0] + "-processed.xlsx"
@@ -312,28 +377,43 @@ def build_pivot_table(df, nested_data, per_team=True):
             vend_node = org_node[vendor]
             prod_node = vend_node[product]
             prod_node[P_CONCURUSERS] = 0
+            prod_node[P_CONCURDURATION] = 0.0
             feature_node = prod_node[feature]
         else:
             # project, vendor, product, feature, org
             proj_node = nested_data[project]
             vend_node = proj_node[vendor]
             prod_node = vend_node[product]
-            prod_node[P_CONCURUSERS] = 0
             feature_node = prod_node[feature]
+            feature_node[P_CONCURUSERS] = 0
+            feature_node[P_CONCURDURATION] = 0.0
             org_node = feature_node[org]
 
         t_prod = prod_user[product] 
-    
-        # Store total per username at feature-level
-        if (feature_node.get(username, 0) == 0 and time > 0):
-            feature_node[P_NUMUSERS]= feature_node.get(P_NUMUSERS, 0) + 1
-        feature_node[username] = feature_node.get(username, 0) + time
-        feature_node[P_CONCURUSERS]= 1	# initial value
-
-        # Store username per product
-        if (t_prod.get(username, 0) == 0 and time > 0):
-            # prod_node[P_NUMUSERS] = prod_node[P_NUMUSERS] + 1
-            t_prod[username] = t_prod.get(username, 0) + time	# not used, but set for value for the key "username"
+        t_feature = prod_user[feature] 
+   
+        if (per_team):  
+            # Store total per username at feature-level
+            if (feature_node.get(username, 0) == 0 and time > 0):
+                feature_node[P_NUMUSERS]= feature_node.get(P_NUMUSERS, 0) + 1
+            feature_node[username] = feature_node.get(username, 0) + time
+            feature_node[P_CONCURUSERS]= 1	# initial value
+            feature_node[P_CONCURDURATION] = 0.0	# initial value
+            # Store username per product
+            if (t_prod.get(username, 0) == 0 and time > 0):
+                # prod_node[P_NUMUSERS] = prod_node[P_NUMUSERS] + 1
+                t_prod[username] = t_prod.get(username, 0) + time	# not used, but set for value for the key "username"
+        else:
+            # Store total per username at feature-level
+            if (org_node.get(username, 0) == 0 and time > 0):
+                org_node[P_NUMUSERS]= org_node.get(P_NUMUSERS, 0) + 1
+            org_node[username] = org_node.get(username, 0) + time
+            org_node[P_CONCURUSERS]= 1	# initial value
+            org_node[P_CONCURDURATION] = 0.0	# initial value
+            # Store username per feature
+            if (t_feature.get(username, 0) == 0 and time > 0):
+                # prod_node[P_NUMUSERS] = prod_node[P_NUMUSERS] + 1
+                t_feature[username] = t_feature.get(username, 0) + time	# not used, but set for value for the key "username"
 
 #        if (prod_node.get(username, 0) == 0 and time > 0):
 #            prod_node[P_NUMUSERS]= prod_node.get(P_NUMUSERS, 0) + 1
@@ -358,8 +438,16 @@ def build_pivot_table(df, nested_data, per_team=True):
         #                     across performers
         # build a list of [[start1, end1], [star2, end2], ...]
         if (time > 0):
-            feature_node[P_INSTANCES] = feature_node.get(P_INSTANCES, [])
-            feature_node[P_INSTANCES].append([start_t, end_t])
+            if (per_team):
+                feature_node[P_INSTANCES] = feature_node.get(P_INSTANCES, [])
+                feature_node[P_INSTANCES].append([start_t, end_t])
+                org_node[P_INSTANCES] = org_node.get(P_INSTANCES, [])
+                org_node[P_INSTANCES].append([start_t, end_t])
+            else:
+                org_node[P_INSTANCES] = org_node.get(P_INSTANCES, [])
+                org_node[P_INSTANCES].append([start_t, end_t])
+                feature_node[P_INSTANCES] = feature_node.get(P_INSTANCES, [])
+                feature_node[P_INSTANCES].append([start_t, end_t])
   
     # remove prod_node[username]    
 
@@ -405,21 +493,23 @@ def main():
     (xls_a, target_sheet, df) = add_extra_fields(file_a, feature_lookup, user_lookup)
 
     print("[3] Make Pivot table from usage file: %s" % file_a)
-    # -- Step 3: Collect data for a pivot table
+    # -- Step 3a: Collect data for a pivot table (for performers)
+    print("Step 3a")
     pivot_data = tree()
     build_pivot_table(df, pivot_data)
-    (rows, max_concurrency) = flatten_defaultdict(pivot_data)
+    (rows, max_concurrency, duration) = flatten_defaultdict(pivot_data)
     
     df_pivot_data = pd.DataFrame(rows) 
-    df_pivot_data.columns = ["Project", "Performer", "Vendor", "Product", "Product Feature", "User", "Total Usage Time", "Number of Users", "Concurrency (Estimated)"]
+    df_pivot_data.columns = ["Project", "Performer", "Vendor", "Product", "Product Feature", "User", "Total Usage Time", "Number of Users", "Concurrency (Estimated)", "Runtime at max Concurrency"]
 
-    # -- Step 3.1: Collect data for a pivot table
+    # -- Step 3b: Collect data for a pivot table (for tools)
+    print("Step 3b")
     pivot_data_tool = tree()
     build_pivot_table(df, pivot_data_tool, False)
-    (rows_tool, max_concurrency) = flatten_defaultdict(pivot_data_tool)
+    (rows_tool, max_concurrency, duration) = flatten_defaultdict(pivot_data_tool)
     
     df_pivot_data_tool = pd.DataFrame(rows_tool) 
-    df_pivot_data_tool.columns = ["Project", "Vendor", "Product", "Product Feature", "Performer", "User", "Total Usage Time", "Number of Users", "Concurrency (Estimated)"]
+    df_pivot_data_tool.columns = ["Project", "Vendor", "Product", "Product Feature", "Performer", "User", "Total Usage Time", "Number of Users", "Concurrency (Estimated)", "Runtime at max Concurrency"]
 
     # -- Step 4: read current_provisiong Exel file and create usage table
     print("[4] Build table comparing current provisions (from file: %s) and actual usage" % file_d)

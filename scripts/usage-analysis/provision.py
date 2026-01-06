@@ -4,6 +4,7 @@ import math
 
 # pivot table column, which comes from match.py
 P_CONCURUSERS = "Concurrent Users"
+P_CONCURDURATION = "Concurrent Duration"
 P_TOTAL = "_total"
 
 # ---------- CONFIG ----------
@@ -16,6 +17,7 @@ PROV_VENDOR = "Vendor"
 PROV_PRODUCT = "Product Feature"
 PROV_CURRENT_PROV = "Current Provision"   # value column to accumulate
 PROV_CONCURRENT_USERS = P_CONCURUSERS
+PROV_CONCURRENT_DURATION = P_CONCURDURATION
 PROV_OVER = "Over Provision"
 PROV_UNDER = "Under Provision"
 PROV_EVEN = "Adequate Provision"
@@ -123,6 +125,7 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
 
     if PROV_CONCURRENT_USERS not in df_provision.columns:
         df_provision.loc[:,PROV_CONCURRENT_USERS] = 0
+        df_provision.loc[:,PROV_CONCURRENT_DURATION] = 0.0
         df_provision.loc[:,PROV_OVER] = 0	# red
         df_provision.loc[:,PROV_UNDER] = 0	# red
         df_provision.loc[:,PROV_EVEN] = "No"    # blue
