@@ -18,7 +18,11 @@ F_PRODUCT="Product"
 F_FEATURE="Feature"
 
 # Sheet name for Comparison between provisioned and used 
-SHEET_NAME_STAT = "Tool Usage"
+SHEET_NAME_USAGE = "Usage"
+SHEET_NAME_PIVOT_PERFORMER = "Pivot table by performer"
+SHEET_NAME_PIVOT_TOOL = "Pivot table by tool"
+SHEET_NAME_TOOL_SUMMARY = "Tool summary"
+SHEET_NAME_SUMMARY = "High-level summary"
 
 from datetime import datetime
 
@@ -314,7 +318,55 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
 
     return (rows, max_concurrency, duration)
 
-def write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov):
+def set_format_summary(writer, df_summary, sheet_name):
+    workbook = writer.book
+    worksheet = writer.sheets[sheet_name]
+
+    percent_format = workbook.add_format({
+        'num_format': '0.00%'
+    })
+
+    # column index (0-based)
+    col_idx = df_summary.columns.get_loc(constants.S_TOOL_USAGE_RATIO)
+
+    # apply format to entire column (skip header width=None)
+    worksheet.set_column(col_idx, col_idx, 12, percent_format)
+
+    # Formats
+    red_bold = workbook.add_format({
+        'font_color': 'red',
+        'bold': True
+    })
+
+    blue_bold = workbook.add_format({
+        'font_color': 'blue',
+        'bold': True
+    })
+
+    start_row = 1
+    end_row   = len(df_summary)
+    # < 0.5 → red bold
+    worksheet.conditional_format(
+        start_row, col_idx, end_row, col_idx,
+        {
+            'type': 'cell',
+            'criteria': '<',
+            'value': 0.5,
+            'format': red_bold
+        }
+    )
+    # > 0.5 → blue bold
+    worksheet.conditional_format(
+        start_row, col_idx, end_row, col_idx,
+        {
+            'type': 'cell',
+            'criteria': '>=',
+            'value': 0.5,
+            'format': blue_bold
+        }
+    )
+
+def write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov, df_summary):
     processed_filename = os.path.splitext(file_a)[0] + "-processed.xlsx"
     print("[5] Write all to file: %s" % processed_filename)
     with pd.ExcelWriter(processed_filename, engine="xlsxwriter") as writer:
@@ -326,10 +378,12 @@ def write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data
                 guessed_header_row = detect_header_row(file_a, sheet)
                 df_other = pd.read_excel(file_a, sheet_name=sheet, header=guessed_header_row)
                 df_other.to_excel(writer, sheet_name=sheet, index=False)
-        df_pivot_data.to_excel(writer, sheet_name="Performer Summary", index=False)
-        df_pivot_data_tool.to_excel(writer, sheet_name="Tool Summary", index=False)
-        df_prov.to_excel(writer, sheet_name=SHEET_NAME_STAT, index=False)
-        pr.set_color_column(writer, df_prov, SHEET_NAME_STAT)
+        df_pivot_data.to_excel(writer, sheet_name=SHEET_NAME_PIVOT_PERFORMER, index=False)
+        df_pivot_data_tool.to_excel(writer, sheet_name=SHEET_NAME_PIVOT_TOOL, index=False)
+        df_prov.to_excel(writer, sheet_name=SHEET_NAME_TOOL_SUMMARY, index=False)
+        pr.set_color_column(writer, df_prov, SHEET_NAME_TOOL_SUMMARY)
+        df_summary.to_excel(writer, sheet_name=SHEET_NAME_SUMMARY, index=False)
+        set_format_summary(writer, df_summary, SHEET_NAME_SUMMARY)
 
     # Set writable permission 
     os.chmod(processed_filename, 0o666)
@@ -505,8 +559,66 @@ def main():
     print("[4] Build table comparing current provisions (from file: %s) and actual usage" % file_d)
     (df_prov) = pr.build_current_provision_usage(file_d, pivot_data)
 
-    # --- Step 5: Write all sheets into A-processed.xlsx ---
-    write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov)
+    # -- Step 5: create a summary tab
+    #           [project, performer, vendor, total hours, tools requested, tools used, usage ratio]
+    #
+    col_proj = constants.PROV_PROJECT
+    col_performer = constants.PROV_PERFORMER
+    col_vendor = constants.PROV_VENDOR
+    col_provisioned = constants.S_NUM_TOOLS_PROVISIONED
+    col_used = constants.S_NUM_TOOLS_USED
+    col_total_time  = constants.PROV_TOTAL
+    col_usage_ratio = constants.S_TOOL_USAGE_RATIO
+    prov_col_concurrency = constants.PROV_CONCURRENT_USERS
+    prov_col_provision = constants.PROV_CURRENT_PROV
+
+    columns = [ col_proj, col_performer, col_vendor, col_total_time , col_provisioned, col_used, col_usage_ratio] 
+    df_summary = pd.DataFrame(columns=columns)
+    # get and fill "Requested Tools", "Tools Used", "Usage Ratio"
+    for _, row in df_prov.iterrows():
+        proj = row[col_proj]
+        performer = row[col_performer]
+        vendor = row[col_vendor]
+        provisioned = row[prov_col_provision]
+        time_used = row[col_total_time ]
+        num_users = row[prov_col_concurrency]
+
+        match = (
+            (df_summary[col_proj] == proj) &
+            (df_summary[col_performer] == performer) &
+            (df_summary[col_vendor] == vendor)
+        )
+
+        if match.any():
+            if (provisioned > 0):
+                df_summary.loc[match, col_provisioned] = df_summary.loc[match, col_provisioned] + 1
+            if (num_users > 0):
+                df_summary.loc[match, col_used] = df_summary.loc[match, col_used] + 1
+        else:
+            # append new
+            new_row = {
+                col_proj : proj,
+                col_performer : performer,
+                col_vendor : vendor,
+                col_total_time : time_used,
+                col_provisioned : 0,
+                col_used : 0,
+                col_usage_ratio : 0.0
+            }
+            if (provisioned > 0):
+                new_row[col_provisioned] = 1
+            if (num_users > 0):
+                new_row[col_used] = 1
+            df_summary.loc[len(df_summary)] = new_row
+ 
+    # fill "Usage Ratio"
+    df_summary[col_usage_ratio] = (
+        df_summary[col_used] / df_summary[col_provisioned]
+    ).fillna(0)
+
+
+    # --- Step 6: Write all sheets into A-processed.xlsx ---
+    write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov, df_summary)
 
 if __name__ == "__main__":
     main()

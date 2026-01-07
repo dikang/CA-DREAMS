@@ -32,3 +32,7 @@ PROV_UNDER = "Under Provision"
 PROV_EVEN = "Adequate Provision"
 PROV_TOTAL = "Usage time (hours)"	# from P_TOTAL
 
+# Summay Excel sheet
+S_NUM_TOOLS_USED = "Number of Tools Used"	# number of tool used
+S_NUM_TOOLS_PROVISIONED = "Number of Tools Provisioned"	# number of tool provisioned
+S_TOOL_USAGE_RATIO = "Ratio of Tools Used" # ration of tools used over tools provisioned
