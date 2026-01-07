@@ -1,30 +1,11 @@
 import pandas as pd
 from collections import defaultdict
 import math
-
-# pivot table column, which comes from match.py
-P_CONCURUSERS = "Concurrent Users"
-P_CONCURDURATION = "Concurrent Duration"
-P_TOTAL = "_total"
+import constants
 
 # ---------- CONFIG ----------
 SHEET = "Current Provisioning"
 
-# Candidate column name keywords (case-insensitive, partial matches allowed)
-PROV_PROJECT = "Project"
-PROV_PERFORMER = "Performer"
-PROV_VENDOR = "Vendor"
-PROV_PRODUCT = "Product Feature"
-PROV_CURRENT_PROV = "Current Provision"   # value column to accumulate
-PROV_CONCURRENT_USERS = P_CONCURUSERS
-PROV_CONCURRENT_DURATION = P_CONCURDURATION
-PROV_OVER = "Over Provision"
-PROV_UNDER = "Under Provision"
-PROV_EVEN = "Adequate Provision"
-PROV_TOTAL = "Usage time (hours)"	# from P_TOTAL
-
-# How many top rows may contain selection controls (not data headers)
-MAX_SELECTION_ROWS = 9
 # How far to search for header row (some tolerance)
 MAX_HEADER_SEARCH_ROWS = 20
 # ----------------------------
@@ -89,7 +70,7 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
 
     """
     df_provision must contain columns:
-    [PROV_PROJECT, PROV_PERFORMER, PROV_VENDOR, PROV_PRODUCT_FEATURE, PROV_CURRENT_PROV]
+    [constants.PROV_PROJECT, constants.PROV_PERFORMER, constants.PROV_VENDOR, constants.PROV_PRODUCT_FEATURE, constants.PROV_CURRENT_PROV]
 #    ['Project', 'Performer', 'Vendor', 'Product Feature', 'Current Provision']
 
     This function:
@@ -117,47 +98,47 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
     }
 
     for i, row in df_provision.iterrows():
-        if (row[PROV_PERFORMER] in trans_performer):
-            row[PROV_PERFORMER] = trans_performer[row[PROV_PERFORMER]]
+        if (row[constants.PROV_PERFORMER] in trans_performer):
+            row[constants.PROV_PERFORMER] = trans_performer[row[constants.PROV_PERFORMER]]
 
     # sort df_provision first
     df_provision.sort_values(by=df_provision.columns[:4].tolist(), inplace=True)
 
-    if PROV_CONCURRENT_USERS not in df_provision.columns:
-        df_provision.loc[:,PROV_CONCURRENT_USERS] = 0
-        df_provision.loc[:,PROV_CONCURRENT_DURATION] = 0.0
-        df_provision.loc[:,PROV_TOTAL] = 0
-        df_provision.loc[:,PROV_OVER] = 0	# red
-        df_provision.loc[:,PROV_UNDER] = 0	# red
-        df_provision.loc[:,PROV_EVEN] = "No"    # blue
+    if constants.PROV_CONCURRENT_USERS not in df_provision.columns:
+        df_provision.loc[:,constants.PROV_CONCURRENT_USERS] = 0
+        df_provision.loc[:,constants.PROV_CONCURRENT_DURATION] = 0.0
+        df_provision.loc[:,constants.PROV_TOTAL] = 0
+        df_provision.loc[:,constants.PROV_OVER] = 0	# red
+        df_provision.loc[:,constants.PROV_UNDER] = 0	# red
+        df_provision.loc[:,constants.PROV_EVEN] = "No"    # blue
  
     # This callback is executed for each leaf of pivot_data
     def handle_leaf(path, value):
 
-        # path = [proj, perf, vend, prod, P_CONCURUSERS]
+        # path = [proj, perf, vend, prod, constants.P_CONCURUSERS]
         if (len(path) != 5):
            return
 
         proj, perf, vend, prod, field = path
 
-        # Only process the P_CONCURUSERS leaves
-        if field != P_CONCURUSERS and field != P_TOTAL and field != P_CONCURDURATION:
+        # Only process the constants.P_CONCURUSERS leaves
+        if field != constants.P_CONCURUSERS and field != constants.P_TOTAL and field != constants.P_CONCURDURATION:
             return
 
         # Build filter
         match = (
-            (df_provision[PROV_PROJECT] == proj) &
-            (df_provision[PROV_PERFORMER] == perf) &
-            (df_provision[PROV_VENDOR] == vend) &
-            (df_provision[PROV_PRODUCT] == prod) 
+            (df_provision[constants.PROV_PROJECT] == proj) &
+            (df_provision[constants.PROV_PERFORMER] == perf) &
+            (df_provision[constants.PROV_VENDOR] == vend) &
+            (df_provision[constants.PROV_PRODUCT] == prod) 
         )
 
-        if (field == P_TOTAL):
-            column_name = PROV_TOTAL
-        elif (field == P_CONCURDURATION):
-            column_name = PROV_CONCURRENT_DURATION
-        elif (field == P_CONCURUSERS):
-            column_name = PROV_CONCURRENT_USERS
+        if (field == constants.P_TOTAL):
+            column_name = constants.PROV_TOTAL
+        elif (field == constants.P_CONCURDURATION):
+            column_name = constants.PROV_CONCURRENT_DURATION
+        elif (field == constants.P_CONCURUSERS):
+            column_name = constants.PROV_CONCURRENT_USERS
         if match.any():
             # Update existing row
             df_provision.loc[match, column_name] = value
@@ -165,11 +146,11 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
             # Append a new row
             #df_provision.loc[match, "concurrency"] = value
             new_row = {
-                PROV_PROJECT: proj,
-                PROV_PERFORMER: perf,
-                PROV_VENDOR: vend,
-                PROV_PRODUCT: prod,
-                PROV_CURRENT_PROV: 0,
+                constants.PROV_PROJECT: proj,
+                constants.PROV_PERFORMER: perf,
+                constants.PROV_VENDOR: vend,
+                constants.PROV_PRODUCT: prod,
+                constants.PROV_CURRENT_PROV: 0,
             }
             new_row[column_name] = value
             df_provision.loc[len(df_provision)] = new_row
@@ -180,29 +161,29 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
     # post-processing
     # Add 'diff' field
     for i, row in df_provision.iterrows():
-        if (pd.isna(row[PROV_PROJECT]) or row[PROV_PROJECT] == ""):
-            df_provision.loc[i, PROV_EVEN] = ""
-            df_provision.loc[i, PROV_OVER] = ""
-            df_provision.loc[i, PROV_UNDER] = ""
+        if (pd.isna(row[constants.PROV_PROJECT]) or row[constants.PROV_PROJECT] == ""):
+            df_provision.loc[i, constants.PROV_EVEN] = ""
+            df_provision.loc[i, constants.PROV_OVER] = ""
+            df_provision.loc[i, constants.PROV_UNDER] = ""
             continue 
-        diff = row[PROV_CURRENT_PROV] - row[PROV_CONCURRENT_USERS]
+        diff = row[constants.PROV_CURRENT_PROV] - row[constants.PROV_CONCURRENT_USERS]
             
         if diff == 0: # adequate
-            df_provision.loc[i, PROV_EVEN] = "Yes"
-            df_provision.loc[i, PROV_OVER] = ""
-            df_provision.loc[i, PROV_UNDER] = ""
+            df_provision.loc[i, constants.PROV_EVEN] = "Yes"
+            df_provision.loc[i, constants.PROV_OVER] = ""
+            df_provision.loc[i, constants.PROV_UNDER] = ""
         elif diff > 0: # over
-            df_provision.loc[i, PROV_EVEN] = ""
-            df_provision.loc[i, PROV_OVER] = diff
-            df_provision.loc[i, PROV_UNDER] = ""
+            df_provision.loc[i, constants.PROV_EVEN] = ""
+            df_provision.loc[i, constants.PROV_OVER] = diff
+            df_provision.loc[i, constants.PROV_UNDER] = ""
         else : # under
-            df_provision.loc[i, PROV_EVEN] = ""
-            df_provision.loc[i, PROV_OVER] = ""
-            df_provision.loc[i, PROV_UNDER] = diff
+            df_provision.loc[i, constants.PROV_EVEN] = ""
+            df_provision.loc[i, constants.PROV_OVER] = ""
+            df_provision.loc[i, constants.PROV_UNDER] = diff
 
     # remove rows whose current_provision == 0 and concurrent_users == 0
     mask = df_provision.apply(
-        lambda row: row[PROV_CURRENT_PROV] == 0 and row[PROV_EVEN] == "Yes",
+        lambda row: row[constants.PROV_CURRENT_PROV] == 0 and row[constants.PROV_EVEN] == "Yes",
         axis=1
     )
     df_provision = df_provision[~mask] 
@@ -214,7 +195,7 @@ def build_current_provision_usage(file_prov, pivot_data):
     raw = pd.read_excel(file_prov, sheet_name=SHEET, header=None)
     
     # --- Step 1: detect header row within first MAX_HEADER_SEARCH_ROWS rows ---
-    required_keywords = [PROV_PROJECT, PROV_PERFORMER, PROV_VENDOR, PROV_PRODUCT, PROV_CURRENT_PROV]
+    required_keywords = [constants.PROV_PROJECT, constants.PROV_PERFORMER, constants.PROV_VENDOR, constants.PROV_PRODUCT, constants.PROV_CURRENT_PROV]
     header_idx = find_header_row(raw, required_keywords, max_search=MAX_HEADER_SEARCH_ROWS)
     
     if header_idx is None:
@@ -228,18 +209,18 @@ def build_current_provision_usage(file_prov, pivot_data):
     
     # --- Step 3: Map columns robustly (partial matches) ---
     cols = list(df_provision.columns)
-    project_col = match_column_name(cols, PROV_PROJECT)
-    performer_col = match_column_name(cols, PROV_PERFORMER)
-    vendor_col = match_column_name(cols, PROV_VENDOR)
-    product_col = match_column_name(cols, PROV_PRODUCT)
-    value_col = match_column_name(cols, PROV_CURRENT_PROV)
+    project_col = match_column_name(cols, constants.PROV_PROJECT)
+    performer_col = match_column_name(cols, constants.PROV_PERFORMER)
+    vendor_col = match_column_name(cols, constants.PROV_VENDOR)
+    product_col = match_column_name(cols, constants.PROV_PRODUCT)
+    value_col = match_column_name(cols, constants.PROV_CURRENT_PROV)
     
     missing = [name for name, actual in [
-        (PROV_PROJECT, project_col),
-        (PROV_PERFORMER, performer_col),
-        (PROV_VENDOR, vendor_col),
-        (PROV_PRODUCT, product_col),
-        (PROV_CURRENT_PROV, value_col)
+        (constants.PROV_PROJECT, project_col),
+        (constants.PROV_PERFORMER, performer_col),
+        (constants.PROV_VENDOR, vendor_col),
+        (constants.PROV_PRODUCT, product_col),
+        (constants.PROV_CURRENT_PROV, value_col)
     ] if actual is None]
     if missing:
         raise RuntimeError(f"Could not find these required columns (partial match): {missing}. "
@@ -266,9 +247,53 @@ def set_color_column(writer, df_prov, sheet_name):
         'font_color': 'green',
         'bold': True
         })
-        col_index = df_prov.columns.get_loc(PROV_OVER)
+        col_index = df_prov.columns.get_loc(constants.PROV_OVER)
         worksheet.set_column(col_index, col_index, None, red_bold_format)
-        col_index = df_prov.columns.get_loc(PROV_UNDER)
+        col_index = df_prov.columns.get_loc(constants.PROV_UNDER)
         worksheet.set_column(col_index, col_index, None, blue_bold_format)
-        col_index = df_prov.columns.get_loc(PROV_EVEN)
+        col_index = df_prov.columns.get_loc(constants.PROV_EVEN)
         worksheet.set_column(col_index, col_index, None, green_bold_format)
+
+def set_color_by_value(writer, df_prov, sheet_name, column_name):
+    workbook  = writer.book
+    worksheet = writer.sheets[sheet_name]
+
+    # Formats
+    red_bold = workbook.add_format({
+        'font_color': 'red',
+        'bold': True
+    })
+
+    blue_bold = workbook.add_format({
+        'font_color': 'blue',
+        'bold': True
+    })
+
+    # Column index
+    col_index = df_prov.columns.get_loc(column_name)
+
+    # Data range (skip header row)
+    start_row = 1
+    end_row   = len(df_prov)
+
+    # < 0.5 → red bold
+    worksheet.conditional_format(
+        start_row, col_index, end_row, col_index,
+        {
+            'type': 'cell',
+            'criteria': '<',
+            'value': 0.5,
+            'format': red_bold
+        }
+    )
+
+    # > 0.5 → blue bold
+    worksheet.conditional_format(
+        start_row, col_index, end_row, col_index,
+        {
+            'type': 'cell',
+            'criteria': '>',
+            'value': 0.5,
+            'format': blue_bold
+        }
+    )

@@ -6,24 +6,7 @@ from openpyxl import load_workbook
 from collections import defaultdict
 import provision as pr
 import math
-# -- pivot table keys
-# 1. fields from usage Excel file
-USG_USERNAME = "User Name"
-USG_FEATURE = "Product"
-USG_TIME = "Total usage time (hours)"
-
-# 2. newly added columns to usage table
-VENDOR = "Vendor Name"
-PRODUCT = "Product Name"
-ORG = "Organization"
-PROJECT = "Project Name"
-
-# 3. calculated columns
-P_NUMUSERS = "Number of Users"
-P_CONCURUSERS = "Concurrent Users"
-P_CONCURDURATION= "Concurrent Duration"
-P_INSTANCES = "_instances"
-P_TOTAL = "_total"
+import constants
 
 # total number of columns output of pivot table in Excel file
 NUMCOLUMNS = 10
@@ -161,7 +144,7 @@ def add_extra_fields(file_a, feature_lookup, user_lookup):
     for sheet in xls_a.sheet_names:
         guessed_header_row = detect_header_row_usagefile(file_a, sheet)
         df_temp = pd.read_excel(file_a, sheet_name=sheet, header=guessed_header_row)
-        if USG_USERNAME in df_temp.columns:
+        if constants.USG_USERNAME in df_temp.columns:
             target_sheet = sheet
             header_row = guessed_header_row
             break
@@ -257,13 +240,13 @@ def calculate_concurrency(A):
        sys.exit(1)
     return (max_concurrency, concur_value)
 
-# Sort keys: put "_total" first, put NUMUSERS and P_CONCURUSERS last
+# Sort keys: put "_total" first, put NUMUSERS and constants.P_CONCURUSERS last
 def sort_key(k):
     if k == "_total":
         return (0, k)
-    elif k == P_NUMUSERS:
+    elif k == constants.P_NUMUSERS:
         return (98, k)
-    elif k == P_CONCURUSERS:
+    elif k == constants.P_CONCURUSERS:
         return (99, k)
     else:
         return (1, k)
@@ -283,7 +266,7 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
     max_concurrency = 0
     duration = 0.0
     for i, k in enumerate(keys):
-        if k == P_INSTANCES:	# list of [start_time, end_time]
+        if k == constants.P_INSTANCES:	# list of [start_time, end_time]
             (_max_concurrency, _duration) = calculate_concurrency(d[k])
             if (_max_concurrency > max_concurrency):
                 max_concurrency = _max_concurrency
@@ -295,17 +278,17 @@ def flatten_defaultdict(d, parent_keys=None, show_blank=True):
             if (_max_concurrency > max_concurrency):
                 max_concurrency = _max_concurrency
                 duration = _duration
-        elif (k == P_CONCURUSERS): 
-            d[P_CONCURUSERS] = max_concurrency
-            d[P_CONCURDURATION] = duration 
+        elif (k == constants.P_CONCURUSERS): 
+            d[constants.P_CONCURUSERS] = max_concurrency
+            d[constants.P_CONCURDURATION] = duration 
             if ("_total" in keys):
                 rows[0][-1] = duration
                 rows[0][-2] = max_concurrency
             continue
-        elif (k == P_CONCURDURATION): continue
-        elif (k == P_NUMUSERS):
+        elif (k == constants.P_CONCURDURATION): continue
+        elif (k == constants.P_NUMUSERS):
             if ("_total" in keys):
-                rows[0][-3] = d[P_NUMUSERS]
+                rows[0][-3] = d[constants.P_NUMUSERS]
             continue
         else:	# value is added at the end of the child_rows, which becomes first row of rows
             if (k == "_total"):
@@ -361,19 +344,19 @@ def build_pivot_table(df, nested_data, per_team=True):
     # Fill nested structure
     prod_user = tree()
     for _, row in df.iterrows():
-        project = row[PROJECT]
-        org = row[ORG]
+        project = row[constants.PROJECT]
+        org = row[constants.ORG]
 
         if isinstance(project, float) and math.isnan(project):
             # no such user exists in AdminUser list.
             print("No such user exists: Exit")
             sys.exit(1)
 
-        vendor = row[VENDOR]
-        product = row[PRODUCT]
-        feature = row[USG_FEATURE]
-        username = row[USG_USERNAME]
-        time = float(row[USG_TIME])
+        vendor = row[constants.VENDOR]
+        product = row[constants.PRODUCT]
+        feature = row[constants.USG_FEATURE]
+        username = row[constants.USG_USERNAME]
+        time = float(row[constants.USG_TIME])
         start_t = str(row["Start Time"])
         end_t = str(row["End Time"])
 
@@ -383,8 +366,8 @@ def build_pivot_table(df, nested_data, per_team=True):
             org_node = proj_node[org]
             vend_node = org_node[vendor]
             prod_node = vend_node[product]
-            prod_node[P_CONCURUSERS] = 0
-            prod_node[P_CONCURDURATION] = 0.0
+            prod_node[constants.P_CONCURUSERS] = 0
+            prod_node[constants.P_CONCURDURATION] = 0.0
             feature_node = prod_node[feature]
         else:
             # project, vendor, product, feature, org
@@ -392,8 +375,8 @@ def build_pivot_table(df, nested_data, per_team=True):
             vend_node = proj_node[vendor]
             prod_node = vend_node[product]
             feature_node = prod_node[feature]
-            feature_node[P_CONCURUSERS] = 0
-            feature_node[P_CONCURDURATION] = 0.0
+            feature_node[constants.P_CONCURUSERS] = 0
+            feature_node[constants.P_CONCURDURATION] = 0.0
             org_node = feature_node[org]
 
         t_prod = prod_user[product] 
@@ -402,28 +385,28 @@ def build_pivot_table(df, nested_data, per_team=True):
         if (per_team):  
             # Store total per username at feature-level
             if (feature_node.get(username, 0) == 0 and time > 0):
-                feature_node[P_NUMUSERS]= feature_node.get(P_NUMUSERS, 0) + 1
+                feature_node[constants.P_NUMUSERS]= feature_node.get(constants.P_NUMUSERS, 0) + 1
             feature_node[username] = feature_node.get(username, 0) + time
-            feature_node[P_CONCURUSERS]= 1	# initial value
-            feature_node[P_CONCURDURATION] = 0.0	# initial value
+            feature_node[constants.P_CONCURUSERS]= 1	# initial value
+            feature_node[constants.P_CONCURDURATION] = 0.0	# initial value
             # Store username per product
             if (t_prod.get(username, 0) == 0 and time > 0):
-                # prod_node[P_NUMUSERS] = prod_node[P_NUMUSERS] + 1
+                # prod_node[constants.P_NUMUSERS] = prod_node[constants.P_NUMUSERS] + 1
                 t_prod[username] = t_prod.get(username, 0) + time	# not used, but set for value for the key "username"
         else:
             # Store total per username at feature-level
             if (org_node.get(username, 0) == 0 and time > 0):
-                org_node[P_NUMUSERS]= org_node.get(P_NUMUSERS, 0) + 1
+                org_node[constants.P_NUMUSERS]= org_node.get(constants.P_NUMUSERS, 0) + 1
             org_node[username] = org_node.get(username, 0) + time
-            org_node[P_CONCURUSERS]= 1	# initial value
-            org_node[P_CONCURDURATION] = 0.0	# initial value
+            org_node[constants.P_CONCURUSERS]= 1	# initial value
+            org_node[constants.P_CONCURDURATION] = 0.0	# initial value
             # Store username per feature
             if (t_feature.get(username, 0) == 0 and time > 0):
-                # prod_node[P_NUMUSERS] = prod_node[P_NUMUSERS] + 1
+                # prod_node[constants.P_NUMUSERS] = prod_node[constants.P_NUMUSERS] + 1
                 t_feature[username] = t_feature.get(username, 0) + time	# not used, but set for value for the key "username"
 
 #        if (prod_node.get(username, 0) == 0 and time > 0):
-#            prod_node[P_NUMUSERS]= prod_node.get(P_NUMUSERS, 0) + 1
+#            prod_node[constants.P_NUMUSERS]= prod_node.get(constants.P_NUMUSERS, 0) + 1
     
         if (per_team):  
             # Update accumulated totals at each level
@@ -446,15 +429,15 @@ def build_pivot_table(df, nested_data, per_team=True):
         # build a list of [[start1, end1], [star2, end2], ...]
         if (time > 0):
             if (per_team):
-                feature_node[P_INSTANCES] = feature_node.get(P_INSTANCES, [])
-                feature_node[P_INSTANCES].append([start_t, end_t])
-                org_node[P_INSTANCES] = org_node.get(P_INSTANCES, [])
-                org_node[P_INSTANCES].append([start_t, end_t])
+                feature_node[constants.P_INSTANCES] = feature_node.get(constants.P_INSTANCES, [])
+                feature_node[constants.P_INSTANCES].append([start_t, end_t])
+                org_node[constants.P_INSTANCES] = org_node.get(constants.P_INSTANCES, [])
+                org_node[constants.P_INSTANCES].append([start_t, end_t])
             else:
-                org_node[P_INSTANCES] = org_node.get(P_INSTANCES, [])
-                org_node[P_INSTANCES].append([start_t, end_t])
-                feature_node[P_INSTANCES] = feature_node.get(P_INSTANCES, [])
-                feature_node[P_INSTANCES].append([start_t, end_t])
+                org_node[constants.P_INSTANCES] = org_node.get(constants.P_INSTANCES, [])
+                org_node[constants.P_INSTANCES].append([start_t, end_t])
+                feature_node[constants.P_INSTANCES] = feature_node.get(constants.P_INSTANCES, [])
+                feature_node[constants.P_INSTANCES].append([start_t, end_t])
   
     # remove prod_node[username]    
 
@@ -465,7 +448,7 @@ def detect_header_row_usagefile(file_path, sheet_name):
     df_preview = pd.read_excel(file_path, sheet_name=sheet_name, nrows=2, header=None)
     for row_idx in [0, 1]:  # check first and second row
         row_values = df_preview.iloc[row_idx].astype(str).str.strip().tolist()
-        if any(x.lower() in [USG_USERNAME.lower(), PRODUCT.lower()] for x in row_values):
+        if any(x.lower() in [constants.USG_USERNAME.lower(), constants.PRODUCT.lower()] for x in row_values):
             return row_idx  # return 0 for first row, 1 for second row
     return 0  # default to first row if not found
 
