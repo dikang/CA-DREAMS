@@ -126,21 +126,22 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
     if PROV_CONCURRENT_USERS not in df_provision.columns:
         df_provision.loc[:,PROV_CONCURRENT_USERS] = 0
         df_provision.loc[:,PROV_CONCURRENT_DURATION] = 0.0
+        df_provision.loc[:,PROV_TOTAL] = 0
         df_provision.loc[:,PROV_OVER] = 0	# red
         df_provision.loc[:,PROV_UNDER] = 0	# red
         df_provision.loc[:,PROV_EVEN] = "No"    # blue
-        df_provision.loc[:,PROV_TOTAL] = 0
  
     # This callback is executed for each leaf of pivot_data
     def handle_leaf(path, value):
+
         # path = [proj, perf, vend, prod, P_CONCURUSERS]
-        if len(path) != 5:
-            return
+        if (len(path) != 5):
+           return
 
         proj, perf, vend, prod, field = path
 
         # Only process the P_CONCURUSERS leaves
-        if field != P_CONCURUSERS and field != P_TOTAL:
+        if field != P_CONCURUSERS and field != P_TOTAL and field != P_CONCURDURATION:
             return
 
         # Build filter
@@ -148,12 +149,15 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
             (df_provision[PROV_PROJECT] == proj) &
             (df_provision[PROV_PERFORMER] == perf) &
             (df_provision[PROV_VENDOR] == vend) &
-            (df_provision[PROV_PRODUCT] == prod)
+            (df_provision[PROV_PRODUCT] == prod) 
         )
 
-        column_name = PROV_CONCURRENT_USERS
         if (field == P_TOTAL):
             column_name = PROV_TOTAL
+        elif (field == P_CONCURDURATION):
+            column_name = PROV_CONCURRENT_DURATION
+        elif (field == P_CONCURUSERS):
+            column_name = PROV_CONCURRENT_USERS
         if match.any():
             # Update existing row
             df_provision.loc[match, column_name] = value
@@ -166,13 +170,14 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
                 PROV_VENDOR: vend,
                 PROV_PRODUCT: prod,
                 PROV_CURRENT_PROV: 0,
-                column_name: value,
             }
+            new_row[column_name] = value
             df_provision.loc[len(df_provision)] = new_row
 
     # Traverse the tree
     traverse_pivot(pivot_data, handle_leaf)
 
+    # post-processing
     # Add 'diff' field
     for i, row in df_provision.iterrows():
         if (pd.isna(row[PROV_PROJECT]) or row[PROV_PROJECT] == ""):
