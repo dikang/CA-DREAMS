@@ -183,7 +183,7 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
 
     # remove rows whose current_provision == 0 and concurrent_users == 0
     mask = df_provision.apply(
-        lambda row: row[constants.PROV_CURRENT_PROV] == 0 and row[constants.PROV_EVEN] == "Yes",
+        lambda row: ((row[constants.PROV_CURRENT_PROV] == 0 and row[constants.PROV_EVEN] == "Yes") or (not isinstance(row[constants.PROV_PROJECT], str))),
         axis=1
     )
     df_provision = df_provision[~mask] 

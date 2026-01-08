@@ -583,6 +583,9 @@ def main():
         time_used = row[col_total_time ]
         num_users = row[prov_col_concurrency]
 
+        if not isinstance(proj, str):
+            continue
+
         match = (
             (df_summary[col_proj] == proj) &
             (df_summary[col_performer] == performer) &
@@ -594,6 +597,7 @@ def main():
                 df_summary.loc[match, col_provisioned] = df_summary.loc[match, col_provisioned] + 1
             if (num_users > 0):
                 df_summary.loc[match, col_used] = df_summary.loc[match, col_used] + 1
+            df_summary.loc[match, col_total_time] = df_summary.loc[match, col_total_time] + time_used
         else:
             # append new
             new_row = {
@@ -616,9 +620,84 @@ def main():
         df_summary[col_used] / df_summary[col_provisioned]
     ).fillna(0)
 
+    sum_cols = [col_total_time, col_provisioned, col_used]
+
+    # Summary per Project
+    # Ensure numeric types
+    df_summary[sum_cols] = df_summary[sum_cols].apply(pd.to_numeric, errors="coerce")
+
+    df_proj_summary= (
+        df_summary
+        .groupby(col_proj, as_index=False)[sum_cols]
+        .sum()
+    )
+
+    df_proj_summary[col_performer] = "ALL"
+    df_proj_summary[col_vendor] = "ALL"
+
+    # fill "Usage Ratio"
+    df_proj_summary[col_usage_ratio] = (
+        df_proj_summary[col_used] / df_proj_summary[col_provisioned]
+    ).fillna(0)
+
+    col_type = "Row Type"
+    df_proj_summary[col_type] = "Project Summary"
+    df_summary[col_type] = "Detail"
+
+    # Ensure same column order
+    df_proj_summary = df_proj_summary [
+        [
+            col_proj, 
+            col_performer, 
+            col_vendor, 
+            col_total_time, 
+            col_provisioned, 
+            col_used, 
+            col_usage_ratio,
+            col_type]
+    ]
+
+    # Create a single blank row with same columns
+    blank_row = pd.DataFrame(
+        [{col: "" for col in df_summary.columns}]
+    )
+
+    # Summary per Project, Performer
+    df_proj_performer_summary= (
+        df_summary
+        .groupby([col_proj, col_performer], as_index=False)[sum_cols]
+        .sum()
+    )
+    df_proj_performer_summary[col_vendor] = "ALL"
+
+    # fill "Usage Ratio"
+    df_proj_performer_summary[col_usage_ratio] = (
+        df_proj_performer_summary[col_used] / df_proj_performer_summary[col_provisioned]
+    ).fillna(0)
+
+    df_proj_performer_summary[col_type] = "Performer Summary"
+    df_summary[col_type] = "Detail"
+
+    # Ensure same column order
+    df_proj_performer_summary = df_proj_performer_summary [
+        [
+            col_proj, 
+            col_performer, 
+            col_vendor, 
+            col_total_time, 
+            col_provisioned, 
+            col_used, 
+            col_usage_ratio,
+            col_type]
+    ]
+    # Append summary rows at the end
+    df_final = pd.concat(
+        [df_summary, blank_row, df_proj_summary, blank_row, df_proj_performer_summary],
+        ignore_index=True
+    )
 
     # --- Step 6: Write all sheets into A-processed.xlsx ---
-    write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov, df_summary)
+    write_new_file(file_a, xls_a, target_sheet, df, df_pivot_data, df_pivot_data_tool, df_prov, df_final)
 
 if __name__ == "__main__":
     main()
