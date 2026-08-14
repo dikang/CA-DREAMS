@@ -29,11 +29,16 @@ from datetime import datetime
 CUSTOM_FMT = "%d/%m/%Y %H:%M:%S"
 CUSTOM_FMT2 = "%d/%m/%Y %H:%M"
 NIMBIS_ISO_FMT = "%Y-%d-%m %H:%M:%S"
+NIMBIS_ISO_FMT2 = "%Y-%m-%d %H:%M:%S"
 
 def parse_datetime(s: str) -> datetime:
     # 1. Try ISO format first
     try:
-#        return datetime.fromisoformat(s)
+        return datetime.fromisoformat(s)
+    except ValueError:
+        pass
+
+    try:
         return datetime.strptime(s, NIMBIS_ISO_FMT)
     except ValueError:
         pass
@@ -51,6 +56,7 @@ def parse_datetime(s: str) -> datetime:
         pass
 
     # 4. Neither matched
+    print(s)
     raise ValueError(f"Unsupported date format: {s}")
 
 def normalize(s: str) -> str:
@@ -401,7 +407,13 @@ def build_pivot_table(df, nested_data, per_team=True):
         project = row[constants.PROJECT]
         org = row[constants.ORG]
 
+        group = str(row["Group"])
+        if "ca dreams" not in (group or "").strip().lower():
+            continue
+
         if isinstance(project, float) and math.isnan(project):
+            print(row)
+            print(project)
             # no such user exists in AdminUser list.
             print("No such user exists: Exit")
             sys.exit(1)

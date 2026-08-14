@@ -85,6 +85,8 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
     # these are used in the provisioned data
     trans_performer = {
         "USC-ISI, The MOSIS Services": "MOSIS 2.0",
+        "USC-ISI, MOSIS 2.0": "MOSIS 2.0",
+        "MOSIS 2.0": "MOSIS 2.0",
         "UCR, The MOSIS Services": "UCR",
         "University of California, San Diego" : "UCSD",
         "University of California, Santa Barbara": "UCSB",
@@ -97,9 +99,10 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
         "UCLA - Wang": "UCLA-Wang"
     }
 
-    for i, row in df_provision.iterrows():
-        if (row[constants.PROV_PERFORMER] in trans_performer):
-            row[constants.PROV_PERFORMER] = trans_performer[row[constants.PROV_PERFORMER]]
+    df_provision[constants.PROV_PERFORMER] = (
+        df_provision[constants.PROV_PERFORMER]
+        .replace(trans_performer)
+    )
 
     # sort df_provision first
     df_provision.sort_values(by=df_provision.columns[:4].tolist(), inplace=True)
@@ -107,9 +110,9 @@ def update_df_provision_with_pivot(df_provision, pivot_data):
     if constants.PROV_CONCURRENT_USERS not in df_provision.columns:
         df_provision.loc[:,constants.PROV_CONCURRENT_USERS] = 0
         df_provision.loc[:,constants.PROV_CONCURRENT_DURATION] = 0.0
-        df_provision.loc[:,constants.PROV_TOTAL] = 0
-        df_provision.loc[:,constants.PROV_OVER] = 0	# red
-        df_provision.loc[:,constants.PROV_UNDER] = 0	# red
+        df_provision.loc[:,constants.PROV_TOTAL] = 0.0
+        df_provision.loc[:,constants.PROV_OVER] = ""	# red
+        df_provision.loc[:,constants.PROV_UNDER] = ""	# red
         df_provision.loc[:,constants.PROV_EVEN] = "No"    # blue
  
     # This callback is executed for each leaf of pivot_data
@@ -228,7 +231,6 @@ def build_current_provision_usage(file_prov, pivot_data):
    
     keep_cols = [ project_col, performer_col, vendor_col, product_col, value_col]
     df_provision_filtered = df_provision[keep_cols]
-
     df_provision_final = update_df_provision_with_pivot(df_provision_filtered, pivot_data)
     return df_provision_final
 
